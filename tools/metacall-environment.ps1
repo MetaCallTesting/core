@@ -222,6 +222,8 @@ function Install-VS {
     }
 }
 
+
+
 function Set-C {
     $ErrorActionPreference = "Stop"
     Write-Output "Installing C dependencies..."
@@ -236,7 +238,7 @@ function Set-C {
     Set-Location $ROOT_DIR
     $DepsDir = Join-Path $ROOT_DIR 'dependencies'
     $vcpkgDir = Join-Path $DepsDir 'vcpkg'
-
+	$LLVM_Install_Dir = Join-Path $vcpkgDir 'installed\x64-windows'
 	# Install vcpkg if missing
     if (-not (Test-Path (Join-Path $vcpkgDir 'vcpkg.exe'))) {
         Write-Output "Cloning vcpkg into $vcpkgDir..."
@@ -251,49 +253,47 @@ function Set-C {
     Write-Output "Installing libffi using vcpkg..."
     & (Join-Path $vcpkgDir 'vcpkg.exe') install libffi
 
-    # Install LLVM using Chocolatey
-    Write-Output "Installing LLVM..."
-    choco install llvm -y
+	# Download and extract precompiled LLVM binaries
+    $llvmVersion = "19.1.7"
+    $installerUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/LLVM-$llvmVersion-win64.exe"
+    $installerPath = "$env:TEMP\LLVM-$llvmVersion-win64.exe"
 
-    # Clone and build libtcc
-    $tccRepoUrl = "https://github.com/TinyCC/tinycc.git"
-    $tccDestination = "$DepsDir\tcc"
-    if (-not (Test-Path "$tccDestination\.git")) {
-        Write-Output "Cloning libtcc..."
-        git clone $tccRepoUrl $tccDestination
+    # if (-not (Test-Path "C:\Program Files\LLVM\bin\clang.exe")) {
+    #     Write-Output "Downloading LLVM $llvmVersion installer..."
+    #     Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+
+    #     Write-Output "Installing LLVM $llvmVersion..."
+    #     Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
+
+    #     Write-Output "Cleaning up installer..."
+    #     Remove-Item $installerPath
+    # } else {
+    #     Write-Output "LLVM $llvmVersion is already installed in C:\Program Files\LLVM."
+    # }
+
+    # Add LLVM to system PATH
+    $llvmBinPath = "C:\Program Files\LLVM\bin"
+    $currentPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine)
+    if ($currentPath -notlike "*$llvmBinPath*") {
+        Write-Output "Adding LLVM to system PATH..."
+        $newPath = "$currentPath;$llvmBinPath"
+        [System.Environment]::SetEnvironmentVariable("Path", $newPath, [System.EnvironmentVariableTarget]::Machine)
     } else {
-        Write-Output "libtcc already cloned."
+        Write-Output "LLVM bin directory is already in the system PATH."
     }
 
-    # Build libtcc using Git Bash
-    $gitBashPath = "C:\Program Files\Git\bin\bash.exe"
-    if ($gitBashPath) {
-        Write-Output "Building libtcc..."
-        Set-Location $tccDestination
-		& "$gitBashPath" -c "git config --global core.autocrlf input"
-		$bashCommand = "cd /c/gcc-14.2.0/bin/ && gcc --version"
-        & "$gitBashPath" -c "$bashCommand" | Tee-Object -Variable output
-		& "$gitBashPath" -c "sed -i 's/\r$//' configure"
-        & "$gitBashPath" -c "ls && ./configure && make && make test && make install" | Tee-Object -Variable output
-    } else {
-        Write-Output "Git Bash not found. Please install Git for Windows."
-    }
-
-    # Write environment options for CMake configuration
-    $Env_Opts = "$ROOT_DIR\build\CMakeConfig.txt"
-    $LLVM_Dir = "$env:ProgramFiles\LLVM"
-    $vcpkgLibDir = "$DepsDir\vcpkg\installed\x64-windows\lib"
-    $vcpkgIncludeDir = "$DepsDir\vcpkg\installed\x64-windows\include"
-    $tccLib = "$tccDestination\lib\tcc.lib"
-    $tccInclude = "$tccDestination\include"
+    # Set paths for CMake configuration
+    $vcpkgLibDir = Join-Path $vcpkgDir 'installed\x64-windows\lib'
+    $vcpkgIncludeDir = Join-Path $vcpkgDir 'installed\x64-windows\include'
+    $Env_Opts = Join-Path $ROOT_DIR 'build\CMakeConfig.txt'
 
     $cmakeOptions = @(
-        "-DLIBFFI_LIBRARY=$vcpkgLibDir\libffi.lib"
-        "-DLIBFFI_INCLUDE_DIR=$vcpkgIncludeDir"
-        "-DLibClang_INCLUDE_DIR=$LLVM_Dir\include\clang"
-        "-DLIBCLANG_LIBRARY=$LLVM_Dir\lib\libclang.lib"
-        "-DTCC_LIBRARY=$tccLib"
-        "-DTCC_INCLUDE_DIR=$tccInclude"
+        "set(OPTION_BUILD_LOADERS_C ON CACHE BOOL `"Build C loaders`")"
+        "set(LIBFFI_LIBRARY `"$vcpkgLibDir\ffi.lib`" CACHE STRING `"Path to libffi library`")"
+        "set(LIBFFI_INCLUDE_DIR `"$vcpkgIncludeDir`" CACHE STRING `"Path to libffi include directory`")"
+        "set(LibClang_INCLUDE_DIR `"$llvmBinPath\..\include`" CACHE STRING `"Path to libclang include directory`")"
+        "set(LIBCLANG_LIBRARY `"$llvmBinPath\..\lib\libclang.lib`" CACHE STRING `"Path to libclang library`")"
+        "set(CMAKE_TOOLCHAIN_FILE `"$vcpkgDir\scripts\buildsystems\vcpkg.cmake`" CACHE STRING `"Path to vcpkg toolchain file`")"
     )
 
     $cmakeOptions | Out-File -Append -FilePath $Env_Opts
