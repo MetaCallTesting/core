@@ -419,7 +419,6 @@ function Set-Choco {
 	# If your PowerShell Execution policy is restrictive, you may
 	# not be able to get around that. Try setting your session to
 	# Bypass.
-	Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
 	Set-ExecutionPolicy Bypass -Scope Process -Force;
 
 	# All install options - offline, proxy, etc at
