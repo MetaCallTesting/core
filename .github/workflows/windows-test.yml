@@ -46,7 +46,8 @@ jobs:
           arch: amd64
 
       - name: Set up the environment
-        run: powershell -ExecutionPolicy Bypass -File .\tools\metacall-environment.ps1 $Env:METACALL_INSTALL_OPTIONS
+        run: |
+          powershell -ExecutionPolicy Bypass -File .\tools\metacall-environment.ps1 $Env:METACALL_INSTALL_OPTIONS
         shell: cmd
         env:
           METACALL_INSTALL_OPTIONS: c python nodejs java ruby typescript wasm rpc file # netcore5 java cobol rust rapidjson funchook swig pack # clangformat v8rep51 coverage
